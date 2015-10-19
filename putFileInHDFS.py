@@ -14,7 +14,7 @@ def printUsage():
 def runHDFSCommand(args):
     command = ["/opt/hadoop/bin/hdfs", "dfs"]
     command += args.split()
-	
+
     print command
     proc = subprocess.Popen(command,stdout=subprocess.PIPE)
     proc.wait()
