@@ -6,12 +6,12 @@ class UtilSahara():
     def __init__(self, connection):
         self.connection = connection
 
-    def createDataSource(self, name, container, container_url, user, key):
+    def createDataSource(self, name, ds_url, ds_type, description="", user=None, key=None):
         print 'Creating Data Source ' + name + ' ...'
         data_source = self.connection.data_sources.create(name,
-                                         container,
-                                         'swift',
-                                         container_url,
+                                         description,
+                                         ds_type,
+                                         ds_url,
                                          user,
                                          key)
         print 'Success! Data Source has been created!'
@@ -99,14 +99,14 @@ class UtilSahara():
 
     #wait time is equal to ~ 2 hours if not setted
     def runStreamingJob(self, job_template_id, cluster_id, streaming_mapper, streaming_reducer,
-        input_ds_id, output_ds_id, wait_time=1500, verify=True, reduces=1):
+        input_ds_id=None, output_ds_id=None, input_hdfs_path="", output_hdfs_path="", wait_time=1500, verify=True, reduces=1):
 
         job_configs = {
             'configs' : {
             'mapred.reduce.tasks' : str(reduces),
             'edp.streaming.mapper': streaming_mapper,
             'edp.streaming.reducer': streaming_reducer },
-            'args': [],
+            'args': [input_hdfs_path,output_hdfs_path],
             'params': {}
         }
 
