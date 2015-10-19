@@ -19,6 +19,8 @@ HDFS_BASE_DIR = "/user/hadoop/"
 HOME_INSTANCE_DIR = "/home/hadoop"
 DEF_OUTPUT_CONTAINER_NAME = "output"
 DEF_INPUT_DIR = "input"
+DEF_INPUT_SIZE = 28672
+DEF_JOB_NAME = "tarciso-experiment-job-"
 
 def configureInstances(instancesIps, publicKeyPairPath, privateKeyPairPath):
 	print "Configuring Instances..."
@@ -40,6 +42,7 @@ def copyFileToInstances(filePath,instancesIps,keypairPath):
 
 def putFileInHDFS(filePath, masterIp,keypairPath):
     nova_util.attach_volume(server_id, volume_id)
+    time.sleep(2)
     file_name = filePath.split('/')[-1]
     print file_name
     remoteFilePath = file_name
@@ -49,7 +52,7 @@ def putFileInHDFS(filePath, masterIp,keypairPath):
     call(command,shell=True)
     nova_util.detache_volume(server_id, volume_id)
 
-    print "Success! File is now at HDFS of cluster!"
+    #print "Success! File is now at HDFS of cluster!"
 
 def createOutputSwiftDataSource(container_out_name,user,password):
 	exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -70,10 +73,33 @@ def createHDFSDataSource(name,path):
 				path,
 				"hdfs").id
 
+def get_command(master_ip, request):
+    command = 'ssh hadoop@%s %s' % (master_ip, request)
+    p_status = Popen(command, shell=True, stdout=PIPE,stderr=PIPE)
+    status_output, err = p_status.communicate()
+    return status_output.strip()
 
-def saveJobResult(job_res,cluster_size,output_file):
+def get_hadoop_job_id(master_ip):
+    list_jobs_call = "/opt/hadoop/bin/hadoop job -list | grep 'hadoop' | awk '{print $1}'"
+    command = 'ssh hadoop@%s %s' % (master_ip, list_jobs_call)
+    p_list_jobs = Popen(command, shell=True, stdout=PIPE,stderr=PIPE)
+    list_jobs_output, list_jobs_err = p_list_jobs.communicate()
+    job_ids = list_jobs_output.split('\n')
+    print job_ids
+    for job_id in job_ids:
+        if not 'launcher' in job_id:
+            return job_id
+    return ''
+
+def saveJobResult(job_res,cluster_size,master_ip,num_reduces,job_num,output_file):
+	#hadoop_job_id = get_hadoop_job_id(master_ip)
+	#maps = get_command(master_ip, "/opt/hadoop/bin/mapred job -status %s | grep 'Number of maps' | awk '{print $4}'"  % hadoop_job_id)
+	#reduces = get_command(master_ip, "/opt/hadoop/bin/mapred job -status %s | grep 'Number of reduces' | awk '{print $4}'"  % hadoop_job_id)
+	#input_size = get_command(master_ip, "/opt/hadoop/bin/mapred job -status %s | grep 'FILE: Number of bytes read' | awk -F'=' '{print $2}'" % hadoop_job_id)
+	#print "Hadoop Stats: " + str(maps) + " " + str(reduces) + " " + str(input_size)
 	print job_res
-	result = ";".join((str(cluster_size), str(job_res['time']), job_res['status']))
+	job_name = DEF_JOB_NAME + str(job_num)
+	result = ";".join((job_name,job_res['id'], str(num_reduces), str(DEF_INPUT_SIZE), str(cluster_size), str(job_res['time']), job_res['status'])) + "\n"
 	print result
 	print "Finished"
 	f = open(output_file, 'ab')
@@ -135,7 +161,7 @@ nova_util = UtilNova(connector.nova())
 #input_ds_id = createHDFSDataSource(DEF_INPUT_DIR,HDFS_BASE_DIR + "/" + DEF_INPUT_DIR) 
 
 #----------------------- EXECUTING EXPERIMENT ------------------------------
-
+job_number = 0
 for cluster_template in json_parser.get('cluster_templates'):
 	
 	cluster_template_id = cluster_template['id']
@@ -145,7 +171,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 	######### CREATING CLUSTER #############
 	try:
 		#cluster_id = sahara_util.createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
-	        cluster_id = "e478add5-0ff7-4196-851f-80b5c916bfcd"
+	    cluster_id = "03f03129-8cdc-4644-ad67-c992ee1cd7c2"
 	except RuntimeError as err:
 		print err.args
 		break
@@ -156,7 +182,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 	#copyFileToInstances(exec_local_path, instancesIps, private_keypair_path)
 	master_ip = sahara_util.get_master_ip(cluster_id)
 	server_id = sahara_util.get_master_id(cluster_id)
-        putFileInHDFS(input_file_path, master_ip, private_keypair_path)
+	putFileInHDFS(input_file_path, master_ip, private_keypair_path)
 
 	######### CREATING DATASOURCES ##########
 	exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -165,9 +191,10 @@ for cluster_template in json_parser.get('cluster_templates'):
 
 	######### RUNNING JOB ##########
 	numFailedJobs = 0
-	for i in xrange(number_execs):
+	for i in xrange(number_execs + NUMBER_OF_BACKUP_EXECUTIONS):
+		job_number += 1
 		job_res = sahara_util.runStreamingJob(job_template_id, cluster_id, mapper_exec_cmd, reducer_exec_cmd, input_ds_id=input_ds_id, output_ds_id=output_ds_id)
-		saveJobResult(job_res,cluster_size,output_file)
+		saveJobResult(job_res,cluster_size,master_ip,mapred_reduce_tasks,job_number,output_file)
 		if (job_res['status'] != 'SUCCEEDED'):
 			numFailedJobs += 1
 		
