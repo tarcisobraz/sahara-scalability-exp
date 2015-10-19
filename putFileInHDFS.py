@@ -4,9 +4,12 @@ import time
 import sys
 
 MIN_NUM_ARGS = 3
+DEF_HADOOP_USER_PASSWD = "hadoop123"
+MOUNT_FOLDER_PATH = "/mnt/database/"
+DEF_DEVICE_PATH = "/dev/vdb/"
 
 def printUsage():
-        print "python PutFileInHDFS.py <filePath> <dirName>"
+        print "python PutFileInHDFS.py <filePathInVolume> <dirName>"
 
 def runHDFSCommand(args):
     command = ["/opt/hadoop/bin/hdfs", "dfs"]
@@ -26,7 +29,6 @@ def putFileInHDFS(filePath, destPath="", blockSize=None):
     else:
         runHDFSCommand("-put " + filePath + " " + destPath)
 
-
 if (len(sys.argv) < MIN_NUM_ARGS):
     print "Wrong number of arguments: ", len(sys.argv)
     printUsage()
@@ -35,5 +37,9 @@ if (len(sys.argv) < MIN_NUM_ARGS):
 file_path = sys.argv[1]
 dir_name = sys.argv[2]
 
+#echo DEF_HADOOP_USER_PASSWD | sudo -S mkdir MOUNT_FOLDER_PATH
+#sudo mount DEF_DEVICE_PATH MOUNT_FOLDER_PATH 
+
 createHDFSDir(dir_name)
 putFileInHDFS(file_path, dir_name)
+#umount
