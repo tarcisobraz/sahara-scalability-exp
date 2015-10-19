@@ -9,7 +9,7 @@ MOUNT_FOLDER_PATH = "/mnt/database/"
 DEF_DEVICE_PATH = "/dev/vdb/"
 
 def printUsage():
-        print "python PutFileInHDFS.py <filePathInVolume> <dirName>"
+    print "python PutFileInHDFS.py <filePathInVolume> <dirName>"
 
 def runHDFSCommand(args):
     command = ["/opt/hadoop/bin/hdfs", "dfs"]
@@ -29,6 +29,20 @@ def putFileInHDFS(filePath, destPath="", blockSize=None):
     else:
         runHDFSCommand("-put " + filePath + " " + destPath)
 
+def mountVolume():
+    command = 'echo ' + DEF_HADOOP_USER_PASSWD + ' | sudo -S mkdir' + ' ' + MOUNT_FOLDER_PATH
+    print command
+    subprocess.call(command, shell=True)
+    command = 'sudo mount' + ' ' + DEF_DEVICE_PATH + ' ' + MOUNT_FOLDER_PATH
+    print command
+    subprocess.call(command, shell=True)
+    command = 'sudo chown -R hadoop ' + MOUNT_FOLDER_PATH
+    print command
+    subprocess.call(command, shell=True)
+
+def umountVolume():
+    subprocess.call('sudo unmount ' + DEF_DEVICE_PATH)
+
 if (len(sys.argv) < MIN_NUM_ARGS):
     print "Wrong number of arguments: ", len(sys.argv)
     printUsage()
@@ -37,9 +51,9 @@ if (len(sys.argv) < MIN_NUM_ARGS):
 file_path = sys.argv[1]
 dir_name = sys.argv[2]
 
-#echo DEF_HADOOP_USER_PASSWD | sudo -S mkdir MOUNT_FOLDER_PATH
-#sudo mount DEF_DEVICE_PATH MOUNT_FOLDER_PATH 
-
+file_path = MOUNT_FOLDER_PATH + file_path
+print file_path
+mountVolume()
 createHDFSDir(dir_name)
 putFileInHDFS(file_path, dir_name)
-#umount
+umountVolume()

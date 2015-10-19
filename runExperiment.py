@@ -2,7 +2,9 @@ from utils.openstack.UtilSwift import *
 from utils.openstack.ConnectionGetter import *
 from utils.openstack.UtilSahara import *
 from utils.openstack.UtilKeystone import *
+from utils.openstack.UtilNova import *
 from utils.experiment.JsonParser import *
+
 import os
 import sys
 import subprocess
@@ -11,7 +13,7 @@ import getpass
 from subprocess import Popen, call, PIPE
 
 MIN_NUM_ARGS = 9
-DEF_CLUSTER_NAME = "experiment-cluster"
+DEF_CLUSTER_NAME = "test-experiment-cluster"
 NUMBER_OF_BACKUP_EXECUTIONS = 0
 HDFS_BASE_DIR = "/user/hadoop/"
 HOME_INSTANCE_DIR = "/home/hadoop"
@@ -37,15 +39,16 @@ def copyFileToInstances(filePath,instancesIps,keypairPath):
         print "Copied file to instance with IP:", instanceIp
 
 def putFileInHDFS(filePath, masterIp,keypairPath):
-    print "Copying file to cluster"
-    copyFileToInstances(filePath, [masterIp],keypairPath)
+    nova_util.attach_volume(server_id, volume_id)
     file_name = filePath.split('/')[-1]
     print file_name
-    remoteFilePath = HOME_INSTANCE_DIR + '/' +  file_name
+    remoteFilePath = file_name
     commandArray = ["ssh -i",keypairPath,"hadoop@" + masterIp, "'cat | python -", remoteFilePath, DEF_INPUT_DIR + "'", "<", "./putFileInHDFS.py"]
     command = ' '.join(commandArray)
     print command
     call(command,shell=True)
+    nova_util.detache_volume(server_id, volume_id)
+
     print "Success! File is now at HDFS of cluster!"
 
 def createOutputSwiftDataSource(container_out_name,user,password):
@@ -53,11 +56,11 @@ def createOutputSwiftDataSource(container_out_name,user,password):
 	output_ds_name ="output_%s_exp_%s" % (user, exec_date)
 	container_out_url = "swift://%s.sahara/%s" % (container_out_name, output_ds_name)
 	data_source_out = sahara_util.createDataSource(output_ds_name,
-													container_out_url,
-													"swift",
-													container_out_name,
-													user,
-													password)
+	    container_out_url,
+	    "swift",
+	    container_out_name,
+	    user,
+            password)
 
 	return data_source_out.id
 
@@ -116,6 +119,7 @@ input_file_path = json_parser.get('input_file_path')
 
 net_id = json_parser.get('net_id')
 image_id = json_parser.get('image_id')
+volume_id = json_parser.get('volume_id')
 
 #------------ GETTING CONNECTION WITH OPENSTACK -----------------
 connector = ConnectionGetter(user, password, project_name, project_id, main_ip)
@@ -123,6 +127,7 @@ connector = ConnectionGetter(user, password, project_name, project_id, main_ip)
 keystone_util = UtilKeystone(connector.keystone())
 token_ref_id = keystone_util.getTokenRef(user, password, project_name).id
 sahara_util = UtilSahara(connector.sahara(token_ref_id))
+nova_util = UtilNova(connector.nova())
 
 #----------------------- CREATING INPUT DATASOURCE ------------------------------
 #exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -139,18 +144,19 @@ for cluster_template in json_parser.get('cluster_templates'):
 
 	######### CREATING CLUSTER #############
 	try:
-		cluster_id = sahara_util.createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
-		#cluster_id = "b9fb4e19-9540-478a-b978-d9211953ff72"
+		#cluster_id = sahara_util.createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
+	        cluster_id = "e478add5-0ff7-4196-851f-80b5c916bfcd"
 	except RuntimeError as err:
 		print err.args
 		break
 		
 	######### CONFIGURING CLUSTER ##########
-	instancesIps = sahara_util.get_instances_ips(cluster_id)
-	configureInstances(instancesIps, public_keypair_path, private_keypair_path)
-	copyFileToInstances(exec_local_path, instancesIps, private_keypair_path)
+	#instancesIps = sahara_util.get_instances_ips(cluster_id)
+	#configureInstances(instancesIps, public_keypair_path, private_keypair_path)
+	#copyFileToInstances(exec_local_path, instancesIps, private_keypair_path)
 	master_ip = sahara_util.get_master_ip(cluster_id)
-	putFileInHDFS(input_file_path, master_ip,private_keypair_path)
+	server_id = sahara_util.get_master_id(cluster_id)
+        putFileInHDFS(input_file_path, master_ip, private_keypair_path)
 
 	######### CREATING DATASOURCES ##########
 	exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')

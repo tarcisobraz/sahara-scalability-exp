@@ -146,6 +146,16 @@ class UtilSahara():
                     print 'master IP =', master_ip
                     return master_ip
 
+    def get_master_id(self, cluster_id):
+        cluster = self.connection.clusters.get(cluster_id)
+        print 'Getting master ID...'
+        for node_group in cluster.node_groups:
+            for instance in node_group['instances']:
+                if 'master' in instance['instance_name']:
+                    master_id = instance['instance_id']
+                    print 'master id =', master_id
+                    return master_id
+
     def verifyClusterCreation(self, cluster_id, wait_time):
         cont = 0
         while True:
