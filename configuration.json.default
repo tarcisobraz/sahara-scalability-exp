@@ -12,5 +12,6 @@
 "output_container_name" : "",
 "private_keypair_name" : "",
 "input_file_path" : "",
-"volume_id" : ""
+"volume_id" : "",
+"input_ds_id" : ""
 }

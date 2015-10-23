@@ -12,9 +12,8 @@ import time
 import getpass
 from subprocess import Popen, call, PIPE
 
-MIN_NUM_ARGS = 9
+MIN_NUM_ARGS = 7
 DEF_CLUSTER_NAME = "test-experiment-cluster"
-NUMBER_OF_BACKUP_EXECUTIONS = 0
 HDFS_BASE_DIR = "/user/hadoop/"
 HOME_INSTANCE_DIR = "/home/hadoop"
 DEF_OUTPUT_CONTAINER_NAME = "output"
@@ -106,9 +105,15 @@ def saveJobResult(job_res,cluster_size,master_ip,num_reduces,job_num,output_file
 	f.write(result)
 	f.close()
 
+def deleteHDFSFolder(keypairPath, masterIp):
+	commandArray = ["ssh -i",keypairPath,"hadoop@" + masterIp, "'cat | python - '", "<", "./removeOutputFile.py"]
+	command = ' '.join(commandArray)
+	print command
+	call(command,shell=True)
+
 
 def printUsage():
-	print "python runJob.py <numberExecs> <jobTemplateId> <inputDataSourceId> <mapperExecCmd> <reducerExecCmd> <numReduceTasks> <configFilePath> <outputFile>"
+	print "python runExperiment.py <numberExecs> <mapperExecCmd> <reducerExecCmd> <numReduceTasks> <configFilePath> <outputFile>"
 
 if (len(sys.argv) < MIN_NUM_ARGS):
 	print "Wrong number of arguments: ", len(sys.argv)
@@ -117,13 +122,11 @@ if (len(sys.argv) < MIN_NUM_ARGS):
 
 #------------ CONFIGURATIONS -----------------
 number_execs = int(sys.argv[1])
-job_template_id = sys.argv[2]
-input_ds_id = sys.argv[3]
-mapper_exec_cmd = sys.argv[4]
-reducer_exec_cmd = sys.argv[5]
-mapred_reduce_tasks = sys.argv[6]
-config_file_path = sys.argv[7]
-output_file = sys.argv[8]
+mapper_exec_cmd = sys.argv[2]
+reducer_exec_cmd = sys.argv[3]
+mapred_reduce_tasks = sys.argv[4]
+config_file_path = sys.argv[5]
+output_file = sys.argv[6]
 
 user = raw_input('OpenStack User: ')
 password = getpass.getpass(prompt='OpenStack Password: ')
@@ -137,11 +140,13 @@ project_id = json_parser.get('project_id')
 
 output_container_name = json_parser.get('output_container_name')
 
+job_template_id = json_parser.get('job_template_id')
 exec_local_path = json_parser.get('exec_local_path')
 public_keypair_path = json_parser.get('public_keypair_path')
 private_keypair_path = json_parser.get('private_keypair_path')
 private_keypair_name = json_parser.get('private_keypair_name')
 input_file_path = json_parser.get('input_file_path')
+input_ds_id = json_parser.get('input_ds_id')
 
 net_id = json_parser.get('net_id')
 image_id = json_parser.get('image_id')
@@ -170,39 +175,40 @@ for cluster_template in json_parser.get('cluster_templates'):
 
 	######### CREATING CLUSTER #############
 	try:
-		#cluster_id = sahara_util.createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
-	    cluster_id = "03f03129-8cdc-4644-ad67-c992ee1cd7c2"
+		cluster_id = sahara_util.createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
+	    #cluster_id = "77026c65-1cf3-4ede-8cdb-f413ba9ddc2a"
 	except RuntimeError as err:
 		print err.args
 		break
 		
 	######### CONFIGURING CLUSTER ##########
-	#instancesIps = sahara_util.get_instances_ips(cluster_id)
-	#configureInstances(instancesIps, public_keypair_path, private_keypair_path)
-	#copyFileToInstances(exec_local_path, instancesIps, private_keypair_path)
+	instancesIps = sahara_util.get_instances_ips(cluster_id)
+	configureInstances(instancesIps, public_keypair_path, private_keypair_path)
+	copyFileToInstances(exec_local_path, instancesIps, private_keypair_path)
 	master_ip = sahara_util.get_master_ip(cluster_id)
 	server_id = sahara_util.get_master_id(cluster_id)
 	putFileInHDFS(input_file_path, master_ip, private_keypair_path)
 
-	######### CREATING DATASOURCES ##########
-	exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
-	output_hdfs_name ="output_%s_exp_%s" % (user, exec_date) 
-	output_ds_id = createHDFSDataSource(output_hdfs_name,HDFS_BASE_DIR + "/" + output_hdfs_name)
-
 	######### RUNNING JOB ##########
-	numFailedJobs = 0
-	for i in xrange(number_execs + NUMBER_OF_BACKUP_EXECUTIONS):
+	numSucceededJobs = 0
+	while (numSucceededJobs < number_execs):
 		job_number += 1
+		
+		######### CREATING DATASOURCES ##########
+		exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
+		output_hdfs_name ="output_%s_exp_%s" % (user, exec_date) 
+		output_ds_id = createHDFSDataSource(output_hdfs_name,HDFS_BASE_DIR + "/" + output_hdfs_name)
+
 		job_res = sahara_util.runStreamingJob(job_template_id, cluster_id, mapper_exec_cmd, reducer_exec_cmd, input_ds_id=input_ds_id, output_ds_id=output_ds_id)
 		saveJobResult(job_res,cluster_size,master_ip,mapred_reduce_tasks,job_number,output_file)
-		if (job_res['status'] != 'SUCCEEDED'):
-			numFailedJobs += 1
+		if (job_res['status'] == 'SUCCEEDED'):
+			numSucceededJobs += 1
 		
+		deleteHDFSFolder(private_keypair_path,master_ip)
+		print "Break time... go take a coffee and relax!"
+		time.sleep(30)
 	
-	######### DELETING CLUSTER ###########
-	if (numFailedJobs <= NUMBER_OF_BACKUP_EXECUTIONS):
-		pass
-		#sahara_util.deleteCluster(cluster_id)
+	sahara_util.deleteCluster(cluster_id)
 	
 	print 'FINISHED FOR CLUSTER ' + cluster_name
 #	sentMail()
