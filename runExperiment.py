@@ -208,7 +208,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 		print "Break time... go take a coffee and relax!"
 		time.sleep(30)
 	
-	#sahara_util.deleteCluster(cluster_id)
+	sahara_util.deleteCluster(cluster_id)
 	
 	print 'FINISHED FOR CLUSTER ' + cluster_name
 #	sentMail()
