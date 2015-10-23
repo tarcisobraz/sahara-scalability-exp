@@ -176,7 +176,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 	######### CREATING CLUSTER #############
 	try:
 		cluster_id = sahara_util.createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
-	    #cluster_id = "77026c65-1cf3-4ede-8cdb-f413ba9ddc2a"
+		#cluster_id = "8b5a4b7f-c906-40be-954d-fc830c948937"
 	except RuntimeError as err:
 		print err.args
 		break
@@ -208,7 +208,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 		print "Break time... go take a coffee and relax!"
 		time.sleep(30)
 	
-	sahara_util.deleteCluster(cluster_id)
+	#sahara_util.deleteCluster(cluster_id)
 	
 	print 'FINISHED FOR CLUSTER ' + cluster_name
 #	sentMail()
