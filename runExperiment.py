@@ -111,7 +111,6 @@ def deleteHDFSFolder(keypairPath, masterIp):
 	print command
 	call(command,shell=True)
 
-
 def printUsage():
 	print "python runExperiment.py <numberExecs> <mapperExecCmd> <reducerExecCmd> <numReduceTasks> <configFilePath> <outputFile>"
 
@@ -194,19 +193,24 @@ for cluster_template in json_parser.get('cluster_templates'):
 	while (numSucceededJobs < number_execs):
 		job_number += 1
 		
-		######### CREATING DATASOURCES ##########
-		exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
-		output_hdfs_name ="output_%s_exp_%s" % (user, exec_date) 
-		output_ds_id = createHDFSDataSource(output_hdfs_name,HDFS_BASE_DIR + "/" + output_hdfs_name)
+		try:
+			######### CREATING DATASOURCES ##########
+			exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
+			output_hdfs_name ="output_%s_exp_%s" % (user, exec_date) 
+			output_ds_id = createHDFSDataSource(output_hdfs_name,HDFS_BASE_DIR + "/" + output_hdfs_name)
 
-		job_res = sahara_util.runStreamingJob(job_template_id, cluster_id, mapper_exec_cmd, reducer_exec_cmd, input_ds_id=input_ds_id, output_ds_id=output_ds_id)
-		saveJobResult(job_res,cluster_size,master_ip,mapred_reduce_tasks,job_number,output_file)
-		if (job_res['status'] == 'SUCCEEDED'):
-			numSucceededJobs += 1
+			job_res = sahara_util.runStreamingJob(job_template_id, cluster_id, mapper_exec_cmd, reducer_exec_cmd, input_ds_id=input_ds_id, output_ds_id=output_ds_id)
+			saveJobResult(job_res,cluster_size,master_ip,mapred_reduce_tasks,job_number,output_file)
+			if (job_res['status'] == 'SUCCEEDED'):
+				numSucceededJobs += 1
 		
-		deleteHDFSFolder(private_keypair_path,master_ip)
-		print "Break time... go take a coffee and relax!"
-		time.sleep(30)
+			deleteHDFSFolder(private_keypair_path,master_ip)
+			print "Break time... go take a coffee and relax!"
+			time.sleep(30)
+		except Exception, e:
+			print "Exception: ", e
+			print "Waiting till Sahara gets back to normal operation..."
+			time.sleep(300)
 	
 	sahara_util.deleteCluster(cluster_id)
 	
