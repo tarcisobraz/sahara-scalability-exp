@@ -40,7 +40,7 @@ def copyFileToInstances(filePath,instancesIps,keypairPath):
         print "Copied file to instance with IP:", instanceIp
 
 def putFileInHDFS(filePath, masterIp,keypairPath):
-    nova_util.attach_volume(server_id, volume_id)
+    connection['nova'].attach_volume(server_id, volume_id)
     time.sleep(2)
     file_name = filePath.split('/')[-1]
     print file_name
@@ -49,7 +49,7 @@ def putFileInHDFS(filePath, masterIp,keypairPath):
     command = ' '.join(commandArray)
     print command
     call(command,shell=True)
-    nova_util.detache_volume(server_id, volume_id)
+    connection['nova'].detache_volume(server_id, volume_id)
 
     #print "Success! File is now at HDFS of cluster!"
 
@@ -57,7 +57,7 @@ def createOutputSwiftDataSource(container_out_name,user,password):
 	exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
 	output_ds_name ="output_%s_exp_%s" % (user, exec_date)
 	container_out_url = "swift://%s.sahara/%s" % (container_out_name, output_ds_name)
-	data_source_out = sahara_util.createDataSource(output_ds_name,
+	data_source_out = connection['sahara'].createDataSource(output_ds_name,
 	    container_out_url,
 	    "swift",
 	    container_out_name,
@@ -68,7 +68,7 @@ def createOutputSwiftDataSource(container_out_name,user,password):
 
 def createHDFSDataSource(name,path):
 	print "Creating Data Source in HDFS with name = " + name + " and path = " + path
-	return sahara_util.createDataSource(name,
+	return connection['sahara'].createDataSource(name,
 				path,
 				"hdfs").id
 
@@ -111,6 +111,26 @@ def deleteHDFSFolder(keypairPath, masterIp):
 	print command
 	call(command,shell=True)
 
+
+def getConnection(user, password, project_name, project_id, main_ip):
+
+    result = {}
+
+    connector = ConnectionGetter(user, password, project_name, project_id, main_ip)
+
+    keystone = UtilKeystone(connector.keystone())
+    token_ref_id = keystone.getTokenRef(user, password, project_name).id
+
+    sahara = UtilSahara(connector.sahara(token_ref_id))
+
+    nova = UtilNova(connector.nova())
+
+    result['keystone'] = keystone
+    result['sahara'] = sahara
+    result['nova'] = nova
+
+    return result
+
 def printUsage():
 	print "python runExperiment.py <numberExecs> <mapperExecCmd> <reducerExecCmd> <numReduceTasks> <configFilePath> <outputFile>"
 
@@ -152,12 +172,8 @@ image_id = json_parser.get('image_id')
 volume_id = json_parser.get('volume_id')
 
 #------------ GETTING CONNECTION WITH OPENSTACK -----------------
-connector = ConnectionGetter(user, password, project_name, project_id, main_ip)
 
-keystone_util = UtilKeystone(connector.keystone())
-token_ref_id = keystone_util.getTokenRef(user, password, project_name).id
-sahara_util = UtilSahara(connector.sahara(token_ref_id))
-nova_util = UtilNova(connector.nova())
+connection = getConnection(user, password, project_name, project_id, main_ip)
 
 #----------------------- CREATING INPUT DATASOURCE ------------------------------
 #exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -174,18 +190,18 @@ for cluster_template in json_parser.get('cluster_templates'):
 
 	######### CREATING CLUSTER #############
 	try:
-		cluster_id = sahara_util.createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
+		cluster_id = connection['sahara'].createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
 		#cluster_id = "8b5a4b7f-c906-40be-954d-fc830c948937"
 	except RuntimeError as err:
 		print err.args
 		break
 		
 	######### CONFIGURING CLUSTER ##########
-	instancesIps = sahara_util.get_instances_ips(cluster_id)
+	instancesIps = connection['sahara'].get_instances_ips(cluster_id)
 	configureInstances(instancesIps, public_keypair_path, private_keypair_path)
 	copyFileToInstances(exec_local_path, instancesIps, private_keypair_path)
-	master_ip = sahara_util.get_master_ip(cluster_id)
-	server_id = sahara_util.get_master_id(cluster_id)
+	master_ip = connection['sahara'].get_master_ip(cluster_id)
+	server_id = connection['sahara'].get_master_id(cluster_id)
 	putFileInHDFS(input_file_path, master_ip, private_keypair_path)
 
 	######### RUNNING JOB ##########
@@ -199,7 +215,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 			output_hdfs_name ="output_%s_exp_%s" % (user, exec_date) 
 			output_ds_id = createHDFSDataSource(output_hdfs_name,HDFS_BASE_DIR + "/" + output_hdfs_name)
 
-			job_res = sahara_util.runStreamingJob(job_template_id, cluster_id, mapper_exec_cmd, reducer_exec_cmd, input_ds_id=input_ds_id, output_ds_id=output_ds_id)
+			job_res = connection['sahara'].runStreamingJob(job_template_id, cluster_id, mapper_exec_cmd, reducer_exec_cmd, input_ds_id=input_ds_id, output_ds_id=output_ds_id)
 			saveJobResult(job_res,cluster_size,master_ip,mapred_reduce_tasks,job_number,output_file)
 			if (job_res['status'] == 'SUCCEEDED'):
 				numSucceededJobs += 1
@@ -209,10 +225,9 @@ for cluster_template in json_parser.get('cluster_templates'):
 			time.sleep(30)
 		except Exception, e:
 			print "Exception: ", e
-			print "Waiting till Sahara gets back to normal operation..."
-			time.sleep(300)
+			connection = getConnection(user, password, project_name, project_id, main_ip)
 	
-	sahara_util.deleteCluster(cluster_id)
+	connection['sahara'].deleteCluster(cluster_id)
 	
 	print 'FINISHED FOR CLUSTER ' + cluster_name
 #	sentMail()
