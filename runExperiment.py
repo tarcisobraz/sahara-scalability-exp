@@ -39,10 +39,9 @@ def copyFileToInstances(filePath,instancesIps,keypairPath):
         call(command,shell=True)
         print "Copied file to instance with IP:", instanceIp
 
-def putFileInHDFS(filePath, masterIp,keypairPath):
+def putFileInHDFS(file_name, masterIp,keypairPath):
     connection['nova'].attach_volume(server_id, volume_id)
     time.sleep(2)
-    file_name = filePath.split('/')[-1]
     print file_name
     remoteFilePath = file_name
     commandArray = ["ssh -i",keypairPath,"hadoop@" + masterIp, "'cat | python -", remoteFilePath, DEF_INPUT_DIR + "'", "<", "./putFileInHDFS.py"]
@@ -186,12 +185,13 @@ for cluster_template in json_parser.get('cluster_templates'):
 	
 	cluster_template_id = cluster_template['id']
 	cluster_size = cluster_template['n_slaves']
+	cluster_input = cluster_template['input_file']
 	cluster_name = DEF_CLUSTER_NAME + '-' +  str(cluster_size)
 
 	######### CREATING CLUSTER #############
 	try:
 		cluster_id = connection['sahara'].createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
-		#cluster_id = "8b5a4b7f-c906-40be-954d-fc830c948937"
+		#cluster_id = "d8d8dea3-a885-4110-ad59-946a65a1119e"
 	except RuntimeError as err:
 		print err.args
 		break
@@ -202,7 +202,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 	copyFileToInstances(exec_local_path, instancesIps, private_keypair_path)
 	master_ip = connection['sahara'].get_master_ip(cluster_id)
 	server_id = connection['sahara'].get_master_id(cluster_id)
-	putFileInHDFS(input_file_path, master_ip, private_keypair_path)
+	putFileInHDFS(cluster_input, master_ip, private_keypair_path)
 
 	######### RUNNING JOB ##########
 	numSucceededJobs = 0
@@ -215,7 +215,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 			output_hdfs_name ="output_%s_exp_%s" % (user, exec_date) 
 			output_ds_id = createHDFSDataSource(output_hdfs_name,HDFS_BASE_DIR + "/" + output_hdfs_name)
 
-			job_res = connection['sahara'].runStreamingJob(job_template_id, cluster_id, mapper_exec_cmd, reducer_exec_cmd, input_ds_id=input_ds_id, output_ds_id=output_ds_id)
+			job_res = connection['sahara'].runStreamingJob(job_template_id, cluster_id, mapper_exec_cmd, reducer_exec_cmd, input_ds_id=input_ds_id, output_ds_id=output_ds_id,reduces=mapred_reduce_tasks)
 			saveJobResult(job_res,cluster_size,master_ip,mapred_reduce_tasks,job_number,output_file)
 			if (job_res['status'] == 'SUCCEEDED'):
 				numSucceededJobs += 1
