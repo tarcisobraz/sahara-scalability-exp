@@ -109,6 +109,8 @@ class UtilSahara():
             'args': [input_hdfs_path,output_hdfs_path],
             'params': {}
         }
+        
+        print "job_configs:", job_configs
 
         job = self.connection.job_executions.create(job_template_id,
                                    cluster_id,

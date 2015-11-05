@@ -34,7 +34,6 @@ class UtilNova():
             time.sleep(0.5)
             attached = self.is_volume_attached(volume_id, server_id)
 
-        time.sleep(DEF_WAITING_TIME)
         print 'Success!'
 
 

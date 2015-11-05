@@ -20,6 +20,7 @@ DEF_OUTPUT_CONTAINER_NAME = "output"
 DEF_INPUT_DIR = "input"
 DEF_INPUT_SIZE = 28672
 DEF_JOB_NAME = "tarciso-experiment-job-"
+OUTPUT_FILE_HEADER = "job_name;job_id;num_reduces;input_size;cluster_size;proc_time;status"
 
 def configureInstances(instancesIps, publicKeyPairPath, privateKeyPairPath):
 	print "Configuring Instances..."
@@ -39,7 +40,7 @@ def copyFileToInstances(filePath,instancesIps,keypairPath):
         call(command,shell=True)
         print "Copied file to instance with IP:", instanceIp
 
-def putFileInHDFS(file_name, masterIp,keypairPath):
+def putFileInHDFS(file_name, masterIp, server_id, keypairPath):
     connection['nova'].attach_volume(server_id, volume_id)
     time.sleep(2)
     print file_name
@@ -50,7 +51,7 @@ def putFileInHDFS(file_name, masterIp,keypairPath):
     call(command,shell=True)
     connection['nova'].detache_volume(server_id, volume_id)
 
-    #print "Success! File is now at HDFS of cluster!"
+    print "Success! File is now at HDFS of cluster!"
 
 def createOutputSwiftDataSource(container_out_name,user,password):
 	exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -90,11 +91,6 @@ def get_hadoop_job_id(master_ip):
     return ''
 
 def saveJobResult(job_res,cluster_size,master_ip,num_reduces,job_num,output_file):
-	#hadoop_job_id = get_hadoop_job_id(master_ip)
-	#maps = get_command(master_ip, "/opt/hadoop/bin/mapred job -status %s | grep 'Number of maps' | awk '{print $4}'"  % hadoop_job_id)
-	#reduces = get_command(master_ip, "/opt/hadoop/bin/mapred job -status %s | grep 'Number of reduces' | awk '{print $4}'"  % hadoop_job_id)
-	#input_size = get_command(master_ip, "/opt/hadoop/bin/mapred job -status %s | grep 'FILE: Number of bytes read' | awk -F'=' '{print $2}'" % hadoop_job_id)
-	#print "Hadoop Stats: " + str(maps) + " " + str(reduces) + " " + str(input_size)
 	print job_res
 	job_name = DEF_JOB_NAME + str(job_num)
 	result = ";".join((job_name,job_res['id'], str(num_reduces), str(DEF_INPUT_SIZE), str(cluster_size), str(job_res['time']), job_res['status'])) + "\n"
@@ -170,14 +166,14 @@ net_id = json_parser.get('net_id')
 image_id = json_parser.get('image_id')
 volume_id = json_parser.get('volume_id')
 
+
+#------------ WRITING OUTPUT FILE HEADER -----------------
+f = open(output_file, 'ab')
+f.write(OUTPUT_FILE_HEADER)
+f.close()
+
 #------------ GETTING CONNECTION WITH OPENSTACK -----------------
-
 connection = getConnection(user, password, project_name, project_id, main_ip)
-
-#----------------------- CREATING INPUT DATASOURCE ------------------------------
-#exec_date = datetime.now().strftime('%Y%m%d_%H%M%S')
-#input_hdfs_name ="input_%s_exp_%s" % (user, exec_date)
-#input_ds_id = createHDFSDataSource(DEF_INPUT_DIR,HDFS_BASE_DIR + "/" + DEF_INPUT_DIR) 
 
 #----------------------- EXECUTING EXPERIMENT ------------------------------
 job_number = 0
@@ -191,7 +187,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 	######### CREATING CLUSTER #############
 	try:
 		cluster_id = connection['sahara'].createClusterHadoop(cluster_name, image_id, cluster_template_id, net_id, private_keypair_name)
-		#cluster_id = "d8d8dea3-a885-4110-ad59-946a65a1119e"
+		#cluster_id = "fceab9c1-6b0e-4ff6-b3d0-52418ae91bb4"
 	except RuntimeError as err:
 		print err.args
 		break
@@ -202,7 +198,7 @@ for cluster_template in json_parser.get('cluster_templates'):
 	copyFileToInstances(exec_local_path, instancesIps, private_keypair_path)
 	master_ip = connection['sahara'].get_master_ip(cluster_id)
 	server_id = connection['sahara'].get_master_id(cluster_id)
-	putFileInHDFS(cluster_input, master_ip, private_keypair_path)
+	putFileInHDFS(cluster_input, master_ip, server_id, private_keypair_path)
 
 	######### RUNNING JOB ##########
 	numSucceededJobs = 0
@@ -215,19 +211,20 @@ for cluster_template in json_parser.get('cluster_templates'):
 			output_hdfs_name ="output_%s_exp_%s" % (user, exec_date) 
 			output_ds_id = createHDFSDataSource(output_hdfs_name,HDFS_BASE_DIR + "/" + output_hdfs_name)
 
+			#job_params = { 'mapred.max.split.size' : '1024'}
 			job_res = connection['sahara'].runStreamingJob(job_template_id, cluster_id, mapper_exec_cmd, reducer_exec_cmd, input_ds_id=input_ds_id, output_ds_id=output_ds_id,reduces=mapred_reduce_tasks)
 			saveJobResult(job_res,cluster_size,master_ip,mapred_reduce_tasks,job_number,output_file)
 			if (job_res['status'] == 'SUCCEEDED'):
 				numSucceededJobs += 1
 		
-			deleteHDFSFolder(private_keypair_path,master_ip)
+			#deleteHDFSFolder(private_keypair_path,master_ip)
 			print "Break time... go take a coffee and relax!"
 			time.sleep(30)
 		except Exception, e:
 			print "Exception: ", e
 			connection = getConnection(user, password, project_name, project_id, main_ip)
 	
-	connection['sahara'].deleteCluster(cluster_id)
+	#connection['sahara'].deleteCluster(cluster_id)
 	
 	print 'FINISHED FOR CLUSTER ' + cluster_name
 #	sentMail()
