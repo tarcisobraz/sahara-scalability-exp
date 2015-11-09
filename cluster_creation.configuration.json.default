@@ -1,0 +1,11 @@
+{
+"project_name" : "",
+"project_id" : "",
+"cluster_template_id" : "", 
+"net_id" : "",
+"image_id" : "",
+"main_ip" : "",
+"keypair_name" : "",
+"public_keypair_path" : "",
+"private_keypair_path" : ""
+}
